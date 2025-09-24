@@ -1,0 +1,3 @@
+[console_scripts]
+ejo = enterprise_job_orchestrator.cli.main:main
+enterprise-job-orchestrator = enterprise_job_orchestrator.cli.main:main

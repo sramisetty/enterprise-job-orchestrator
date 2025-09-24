@@ -1,0 +1,539 @@
+Metadata-Version: 2.1
+Name: enterprise-job-orchestrator
+Version: 1.0.0
+Summary: Enterprise-grade job orchestration system for massive data processing
+Home-page: https://github.com/enterprise/job-orchestrator
+Author: Enterprise Job Orchestrator Team
+Author-email: dev-team@enterprise.com
+Project-URL: Bug Reports, https://github.com/enterprise/job-orchestrator/issues
+Project-URL: Source, https://github.com/enterprise/job-orchestrator
+Project-URL: Documentation, https://job-orchestrator.enterprise.com/docs
+Keywords: job orchestration,distributed computing,data processing,enterprise,async
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: System Administrators
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Topic :: Software Development :: Libraries :: Python Modules
+Classifier: Topic :: System :: Distributed Computing
+Classifier: Topic :: System :: Systems Administration
+Requires-Python: >=3.8
+Description-Content-Type: text/markdown
+Requires-Dist: asyncpg>=0.27.0
+Requires-Dist: click>=8.0.0
+Requires-Dist: psutil>=5.8.0
+Requires-Dist: typing-extensions>=4.0.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == "dev"
+Requires-Dist: pytest-asyncio>=0.21.0; extra == "dev"
+Requires-Dist: black>=22.0.0; extra == "dev"
+Requires-Dist: isort>=5.10.0; extra == "dev"
+Requires-Dist: mypy>=1.0.0; extra == "dev"
+Requires-Dist: coverage>=6.0.0; extra == "dev"
+Requires-Dist: flake8>=5.0.0; extra == "dev"
+Provides-Extra: monitoring
+Requires-Dist: prometheus-client>=0.14.0; extra == "monitoring"
+Requires-Dist: grafana-api>=1.0.3; extra == "monitoring"
+Provides-Extra: web
+Requires-Dist: fastapi>=0.95.0; extra == "web"
+Requires-Dist: uvicorn>=0.20.0; extra == "web"
+Requires-Dist: jinja2>=3.1.0; extra == "web"
+Provides-Extra: redis
+Requires-Dist: redis>=4.0.0; extra == "redis"
+Requires-Dist: aioredis>=2.0.0; extra == "redis"
+Provides-Extra: all
+Requires-Dist: pytest>=7.0.0; extra == "all"
+Requires-Dist: pytest-asyncio>=0.21.0; extra == "all"
+Requires-Dist: black>=22.0.0; extra == "all"
+Requires-Dist: isort>=5.10.0; extra == "all"
+Requires-Dist: mypy>=1.0.0; extra == "all"
+Requires-Dist: coverage>=6.0.0; extra == "all"
+Requires-Dist: flake8>=5.0.0; extra == "all"
+Requires-Dist: prometheus-client>=0.14.0; extra == "all"
+Requires-Dist: grafana-api>=1.0.3; extra == "all"
+Requires-Dist: fastapi>=0.95.0; extra == "all"
+Requires-Dist: uvicorn>=0.20.0; extra == "all"
+Requires-Dist: jinja2>=3.1.0; extra == "all"
+Requires-Dist: redis>=4.0.0; extra == "all"
+Requires-Dist: aioredis>=2.0.0; extra == "all"
+
+# Enterprise Job Orchestrator
+
+A comprehensive, enterprise-grade job orchestration system designed for processing massive datasets (80+ million records) with distributed workers, fault tolerance, and comprehensive monitoring.
+
+## 🚀 Features
+
+### Core Capabilities
+- **Distributed Processing**: Handle massive datasets across multiple worker nodes
+- **Database-Backed State Management**: PostgreSQL with connection pooling and ACID compliance
+- **Fault Tolerance**: Retry mechanisms, circuit breakers, and checkpoint recovery
+- **Real-time Monitoring**: Structured JSON logging, metrics collection, and alerting
+- **Enterprise CLI**: Production-ready command-line interface
+- **Plugin Architecture**: Easy integration into existing systems
+
+### Processing Strategies
+- **Sequential Processing**: Single-threaded processing for ordered data
+- **Parallel Chunks**: Divide large datasets into chunks for parallel processing
+- **Streaming**: Real-time data processing with continuous flow
+- **Hybrid**: Combination of strategies based on data characteristics
+- **Map-Reduce**: Distributed computation with map and reduce phases
+
+### Job Types
+- Data Processing & ETL
+- Machine Learning & Analytics
+- Data Quality & Validation
+- Identity Matching & Entity Resolution
+- Batch & Stream Processing
+- Custom Workflows
+
+## 📦 Installation
+
+### Basic Installation
+```bash
+pip install enterprise-job-orchestrator
+```
+
+### With All Features
+```bash
+pip install enterprise-job-orchestrator[all]
+```
+
+### Development Installation
+```bash
+git clone https://github.com/enterprise/job-orchestrator.git
+cd job-orchestrator
+pip install -e .[dev]
+```
+
+## 🏃 Quick Start
+
+### 1. Basic Usage
+
+```python
+import asyncio
+from enterprise_job_orchestrator import (
+    JobOrchestrator,
+    Job,
+    JobType,
+    JobPriority,
+    ProcessingStrategy,
+    DatabaseManager
+)
+
+async def main():
+    # Initialize database and orchestrator
+    db_manager = DatabaseManager("postgresql://localhost/orchestrator")
+    await db_manager.initialize()
+
+    orchestrator = JobOrchestrator(db_manager)
+    await orchestrator.start()
+
+    # Create and submit a job
+    job = Job(
+        job_id="data_processing_001",
+        job_name="Process Customer Data",
+        job_type=JobType.DATA_PROCESSING,
+        priority=JobPriority.HIGH,
+        processing_strategy=ProcessingStrategy.PARALLEL_CHUNKS,
+        config={
+            "input_file": "/path/to/data.csv",
+            "chunk_size": 10000,
+            "output_directory": "/path/to/output/"
+        }
+    )
+
+    job_id = await orchestrator.submit_job(job)
+    print(f"Job submitted with ID: {job_id}")
+
+    # Monitor job progress
+    status = await orchestrator.get_job_status(job_id)
+    print(f"Job status: {status}")
+
+    await orchestrator.stop()
+
+# Run the example
+asyncio.run(main())
+```
+
+### 2. Quick Start Helper
+
+```python
+from enterprise_job_orchestrator import quick_start, Job, JobType
+
+async def simple_example():
+    # Quick start with default configuration
+    orchestrator = quick_start("postgresql://user:pass@host/db")
+    await orchestrator.start()
+
+    job = Job(
+        job_id="quick_job",
+        job_name="Quick Test Job",
+        job_type=JobType.DATA_PROCESSING
+    )
+
+    job_id = await orchestrator.submit_job(job)
+    print(f"Job submitted: {job_id}")
+
+    await orchestrator.stop()
+```
+
+## 🖥️ Command Line Interface
+
+### Job Management
+```bash
+# Submit a job
+ejo job submit "Data Processing Task" --job-type data_processing --priority high --config-file job_config.json
+
+# Check job status
+ejo job status job_12345
+
+# List all jobs
+ejo job status --all
+
+# Cancel a job
+ejo job cancel job_12345
+```
+
+### Worker Management
+```bash
+# Register a worker
+ejo worker register worker_001 "Data Processing Node" --host localhost --port 8080 --capabilities data_processing batch_processing
+
+# List workers
+ejo worker list
+
+# List workers by status
+ejo worker list --status online
+```
+
+### Monitoring
+```bash
+# System health
+ejo monitor health
+
+# Performance metrics
+ejo monitor metrics --hours 24
+
+# Export metrics
+ejo monitor metrics --hours 24 --export metrics_report.json
+```
+
+### Server Management
+```bash
+# Start orchestrator server
+ejo server start --port 8000 --host 0.0.0.0
+```
+
+## 🏗️ Architecture
+
+### Core Components
+
+1. **JobOrchestrator**: Main coordination engine
+2. **JobManager**: Job lifecycle management
+3. **QueueManager**: Priority-based job scheduling
+4. **WorkerManager**: Worker node coordination
+5. **MonitoringService**: Real-time monitoring and alerting
+6. **DatabaseManager**: PostgreSQL state management
+
+### Data Models
+
+- **Job**: Core job definition and configuration
+- **JobExecution**: Runtime execution tracking
+- **JobChunk**: Parallel processing chunks
+- **WorkerNode**: Worker node registration and health
+- **WorkerAssignment**: Job-to-worker assignments
+
+## 🔧 Configuration
+
+### Database Setup
+
+```sql
+-- Create database
+CREATE DATABASE job_orchestrator;
+
+-- The orchestrator will automatically create required tables
+```
+
+### Environment Variables
+
+```bash
+# Database
+DATABASE_URL=postgresql://user:pass@host:5432/job_orchestrator
+
+# Logging
+LOG_LEVEL=INFO
+STRUCTURED_LOGGING=true
+
+# Monitoring
+METRICS_COLLECTION_INTERVAL=30
+HEALTH_CHECK_INTERVAL=60
+```
+
+### Configuration File Example
+
+```json
+{
+  "name": "Large Dataset Processing",
+  "job_type": "data_processing",
+  "priority": "high",
+  "processing_strategy": "parallel_chunks",
+  "config": {
+    "input_file": "/data/large_dataset.csv",
+    "chunk_size": 50000,
+    "output_directory": "/output/processed/",
+    "max_retries": 3,
+    "timeout_minutes": 60
+  },
+  "resource_requirements": {
+    "memory_mb": 8192,
+    "cpu_cores": 4,
+    "disk_gb": 100
+  },
+  "tags": ["customer_data", "monthly_processing"]
+}
+```
+
+## 🔌 Integration Examples
+
+### Flask Integration
+
+```python
+from flask import Flask
+from enterprise_job_orchestrator import JobOrchestrator, DatabaseManager
+
+app = Flask(__name__)
+orchestrator = None
+
+@app.before_first_request
+async def setup_orchestrator():
+    global orchestrator
+    db_manager = DatabaseManager(app.config['DATABASE_URL'])
+    await db_manager.initialize()
+    orchestrator = JobOrchestrator(db_manager)
+    await orchestrator.start()
+
+@app.route('/jobs', methods=['POST'])
+async def submit_job():
+    # Job submission endpoint
+    pass
+```
+
+### Django Integration
+
+```python
+# In your Django app
+from django.apps import AppConfig
+from enterprise_job_orchestrator import JobOrchestrator, DatabaseManager
+
+class JobOrchestratorConfig(AppConfig):
+    name = 'job_orchestrator'
+
+    def ready(self):
+        # Initialize orchestrator when Django starts
+        pass
+```
+
+### Celery Migration
+
+```python
+# Replace Celery tasks with orchestrator jobs
+from enterprise_job_orchestrator import Job, JobType
+
+# Old Celery task
+@celery.task
+def process_data(data):
+    pass
+
+# New orchestrator job
+async def submit_data_processing_job(data):
+    job = Job(
+        job_id=f"data_processing_{uuid.uuid4()}",
+        job_name="Process Data",
+        job_type=JobType.DATA_PROCESSING,
+        config={"data": data}
+    )
+    return await orchestrator.submit_job(job)
+```
+
+## 📊 Monitoring & Observability
+
+### Built-in Metrics
+- Job throughput and success rates
+- Worker utilization and health
+- Queue sizes and wait times
+- Resource consumption
+- Error rates and types
+
+### Alerting
+```python
+# Custom alert rules
+async def high_error_rate_alert():
+    error_rate = await monitoring_service.calculate_error_rate()
+    if error_rate > 5.0:
+        await monitoring_service.trigger_alert(
+            "high_error_rate",
+            AlertSeverity.HIGH,
+            f"Error rate is high: {error_rate:.1f}%"
+        )
+
+# Register custom alert rule
+await orchestrator.monitoring_service.add_alert_rule(high_error_rate_alert)
+```
+
+### Health Endpoints
+```python
+# Health check
+health = await orchestrator.get_system_health()
+print(f"System status: {health['overall_status']}")
+
+# Performance report
+report = await orchestrator.get_performance_report(hours=24)
+print(f"Jobs completed: {report['job_performance']['completed_jobs']}")
+```
+
+## 🚀 Production Deployment
+
+### Docker Deployment
+
+```dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+
+COPY . .
+RUN pip install -e .
+
+EXPOSE 8000
+CMD ["ejo", "server", "start", "--port", "8000"]
+```
+
+### Kubernetes Deployment
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: job-orchestrator
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: job-orchestrator
+  template:
+    metadata:
+      labels:
+        app: job-orchestrator
+    spec:
+      containers:
+      - name: orchestrator
+        image: enterprise/job-orchestrator:latest
+        ports:
+        - containerPort: 8000
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: db-secret
+              key: url
+```
+
+### High Availability Setup
+
+```python
+# Multi-instance deployment with shared database
+import os
+from enterprise_job_orchestrator import JobOrchestrator, DatabaseManager
+
+async def setup_ha_orchestrator():
+    # Shared PostgreSQL database
+    db_url = os.environ['DATABASE_URL']
+    db_manager = DatabaseManager(db_url, pool_size=20)
+
+    # Instance-specific configuration
+    instance_id = os.environ.get('INSTANCE_ID', 'orchestrator-1')
+
+    orchestrator = JobOrchestrator(db_manager)
+    await orchestrator.start()
+
+    return orchestrator
+```
+
+## 🧪 Testing
+
+### Unit Tests
+```bash
+pytest tests/unit/
+```
+
+### Integration Tests
+```bash
+pytest tests/integration/
+```
+
+### Load Testing
+```bash
+pytest tests/load/ --workers 10 --jobs 1000
+```
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+### Development Setup
+
+```bash
+# Clone and setup
+git clone https://github.com/enterprise/job-orchestrator.git
+cd job-orchestrator
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -e .[dev]
+
+# Run tests
+pytest
+
+# Code formatting
+black enterprise_job_orchestrator/
+isort enterprise_job_orchestrator/
+
+# Type checking
+mypy enterprise_job_orchestrator/
+```
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🆘 Support
+
+- **Documentation**: [https://job-orchestrator.enterprise.com/docs](https://job-orchestrator.enterprise.com/docs)
+- **Issues**: [GitHub Issues](https://github.com/enterprise/job-orchestrator/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/enterprise/job-orchestrator/discussions)
+- **Email**: dev-team@enterprise.com
+
+## 🗺️ Roadmap
+
+- [ ] Web UI Dashboard
+- [ ] Kubernetes Operator
+- [ ] Prometheus Integration
+- [ ] GraphQL API
+- [ ] Job Templates Marketplace
+- [ ] Multi-tenant Support
+- [ ] Real-time WebSocket Updates
+- [ ] Advanced Scheduling (Cron, Dependencies)
+
+---
+
+**Enterprise Job Orchestrator** - Powering massive-scale data processing with enterprise-grade reliability.
