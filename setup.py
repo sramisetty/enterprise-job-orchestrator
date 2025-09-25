@@ -51,10 +51,32 @@ setup(
     packages=find_packages(),
     python_requires=">=3.8",
     install_requires=[
+        # Core dependencies
         "asyncpg>=0.27.0",
         "click>=8.0.0",
         "psutil>=5.8.0",
         "typing-extensions>=4.0.0",
+
+        # Spark integration
+        "pyspark>=3.4.0",
+        "py4j>=0.10.9.5",
+
+        # Airflow integration
+        "apache-airflow>=2.7.0",
+        "apache-airflow-providers-postgres>=5.0.0",
+
+        # Additional async and networking
+        "aiofiles>=23.1.0",
+        "httpx>=0.24.0",
+        "asyncio-throttle>=1.0.2",
+
+        # Configuration and serialization
+        "pyyaml>=6.0",
+        "pydantic>=2.0.0",
+
+        # Monitoring and logging
+        "structlog>=23.1.0",
+        "prometheus-client>=0.17.0",
     ],
     extras_require={
         "dev": [
@@ -79,7 +101,24 @@ setup(
             "redis>=4.0.0",
             "aioredis>=2.0.0",
         ],
+        "spark": [
+            "pyspark>=3.4.0",
+            "py4j>=0.10.9.5",
+            "delta-spark>=2.4.0",
+            "koalas>=1.8.2",
+        ],
+        "airflow": [
+            "apache-airflow>=2.7.0",
+            "apache-airflow-providers-postgres>=5.0.0",
+            "apache-airflow-providers-celery>=3.0.0",
+            "apache-airflow-providers-redis>=3.0.0",
+        ],
+        "kubernetes": [
+            "kubernetes>=27.2.0",
+            "pyspark-k8s>=3.4.0",
+        ],
         "all": [
+            # Dev dependencies
             "pytest>=7.0.0",
             "pytest-asyncio>=0.21.0",
             "black>=22.0.0",
@@ -87,13 +126,35 @@ setup(
             "mypy>=1.0.0",
             "coverage>=6.0.0",
             "flake8>=5.0.0",
-            "prometheus-client>=0.14.0",
+
+            # Monitoring dependencies
+            "prometheus-client>=0.17.0",
             "grafana-api>=1.0.3",
+
+            # Web dependencies
             "fastapi>=0.95.0",
             "uvicorn>=0.20.0",
             "jinja2>=3.1.0",
+
+            # Cache dependencies
             "redis>=4.0.0",
             "aioredis>=2.0.0",
+
+            # Spark dependencies
+            "pyspark>=3.4.0",
+            "py4j>=0.10.9.5",
+            "delta-spark>=2.4.0",
+            "koalas>=1.8.2",
+
+            # Airflow dependencies
+            "apache-airflow>=2.7.0",
+            "apache-airflow-providers-postgres>=5.0.0",
+            "apache-airflow-providers-celery>=3.0.0",
+            "apache-airflow-providers-redis>=3.0.0",
+
+            # Kubernetes dependencies
+            "kubernetes>=27.2.0",
+            "pyspark-k8s>=3.4.0",
         ]
     },
     entry_points={

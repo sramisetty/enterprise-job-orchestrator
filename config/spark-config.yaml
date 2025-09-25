@@ -1,0 +1,93 @@
+# Apache Spark Configuration for Enterprise Job Orchestrator
+# This file contains Spark-specific settings for distributed job execution
+
+spark:
+  # Enable Spark engine
+  enabled: true
+
+  # Application settings
+  app_name: "EnterpriseJobOrchestrator"
+  master: "spark://spark-master:7077"  # Change to your Spark master URL
+
+  # Executor configuration
+  executor:
+    memory: "4g"
+    cores: 2
+    instances: 4
+    max_instances: 10
+
+  # Driver configuration
+  driver:
+    memory: "2g"
+    cores: 1
+    max_result_size: "1g"
+
+  # Dynamic allocation
+  dynamic_allocation:
+    enabled: true
+    min_executors: 1
+    max_executors: 10
+    initial_executors: 2
+
+  # Performance tuning
+  sql:
+    adaptive:
+      enabled: true
+      coalesce_partitions: true
+      skip_non_empty_partitioned_table: true
+    execution:
+      arrow:
+        pyspark_enabled: true
+
+  # Serialization
+  serializer: "org.apache.spark.serializer.KryoSerializer"
+
+  # Checkpointing
+  checkpointing:
+    enabled: true
+    directory: "/tmp/spark-checkpoints"
+
+  # Event log
+  event_log:
+    enabled: true
+    directory: "/tmp/spark-events"
+
+  # UI and monitoring
+  ui:
+    enabled: true
+    port: 4040
+
+  # Security (configure as needed)
+  security:
+    authentication: false
+    encryption: false
+
+  # Kubernetes-specific settings (if using Kubernetes)
+  kubernetes:
+    enabled: false
+    namespace: "spark-jobs"
+    driver:
+      pod_template_file: "/path/to/driver-template.yaml"
+    executor:
+      pod_template_file: "/path/to/executor-template.yaml"
+
+  # S3 configuration (if using S3)
+  s3:
+    access_key: ""
+    secret_key: ""
+    endpoint: ""
+
+  # HDFS configuration (if using HDFS)
+  hdfs:
+    namenode: "hdfs://namenode:9000"
+
+  # Resource management
+  resources:
+    cpu_limit: "8"
+    memory_limit: "16Gi"
+
+  # Fault tolerance
+  fault_tolerance:
+    max_failures: 3
+    blacklist_enabled: true
+    task_reaper_enabled: true

@@ -1,0 +1,255 @@
+# Docker Compose configuration for Enterprise Job Orchestrator
+# Includes Spark cluster, Airflow, PostgreSQL, Redis, and monitoring
+
+version: '3.8'
+
+services:
+  # PostgreSQL database for both Airflow and Orchestrator
+  postgres:
+    image: postgres:14
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis for Celery broker
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Spark Master
+  spark-master:
+    image: bitnami/spark:3.4
+    environment:
+      - SPARK_MODE=master
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+    ports:
+      - "8080:8080"  # Spark Master UI
+      - "7077:7077"  # Spark Master port
+    volumes:
+      - spark_data:/opt/bitnami/spark/data
+      - ./config/spark-config.yaml:/opt/bitnami/spark/conf/spark-config.yaml
+
+  # Spark Workers
+  spark-worker-1:
+    image: bitnami/spark:3.4
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=4G
+      - SPARK_WORKER_CORES=2
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+    volumes:
+      - spark_data:/opt/bitnami/spark/data
+    depends_on:
+      - spark-master
+
+  spark-worker-2:
+    image: bitnami/spark:3.4
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=4G
+      - SPARK_WORKER_CORES=2
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+    volumes:
+      - spark_data:/opt/bitnami/spark/data
+    depends_on:
+      - spark-master
+
+  # Airflow Webserver
+  airflow-webserver:
+    image: apache/airflow:2.7.3-python3.11
+    environment:
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres:5432/airflow
+      AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
+      AIRFLOW__CORE__FERNET_KEY: ''
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth'
+      AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
+      _PIP_ADDITIONAL_REQUIREMENTS: 'apache-airflow-providers-postgres apache-airflow-providers-celery'
+    volumes:
+      - ./enterprise_job_orchestrator/airflow/dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+      - ./config:/opt/airflow/config
+    ports:
+      - "8081:8080"  # Airflow UI (avoiding conflict with Spark Master UI)
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    command: webserver
+
+  # Airflow Scheduler
+  airflow-scheduler:
+    image: apache/airflow:2.7.3-python3.11
+    environment:
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres:5432/airflow
+      AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
+      AIRFLOW__CORE__FERNET_KEY: ''
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth'
+      AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
+      _PIP_ADDITIONAL_REQUIREMENTS: 'apache-airflow-providers-postgres apache-airflow-providers-celery'
+    volumes:
+      - ./enterprise_job_orchestrator/airflow/dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+      - ./config:/opt/airflow/config
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"']
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    command: scheduler
+
+  # Airflow Worker
+  airflow-worker:
+    image: apache/airflow:2.7.3-python3.11
+    environment:
+      AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+      AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres:5432/airflow
+      AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
+      AIRFLOW__CORE__FERNET_KEY: ''
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+      AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth'
+      AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
+      _PIP_ADDITIONAL_REQUIREMENTS: 'apache-airflow-providers-postgres apache-airflow-providers-celery'
+    volumes:
+      - ./enterprise_job_orchestrator/airflow/dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+      - ./config:/opt/airflow/config
+      - ./data:/data  # Mount data directory
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", 'celery --app airflow.executors.celery_executor.app inspect ping -d "celery@$${HOSTNAME}"']
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    command: celery worker
+
+  # Enterprise Job Orchestrator API
+  orchestrator-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql://orchestrator:orchestrator@postgres:5432/enterprise_jobs
+      SPARK_MASTER_URL: spark://spark-master:7077
+      REDIS_URL: redis://redis:6379/1
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data
+      - ./logs:/app/logs
+      - ./config:/app/config
+    depends_on:
+      postgres:
+        condition: service_healthy
+      spark-master:
+        condition: service_started
+      redis:
+        condition: service_healthy
+
+  # Monitoring: Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+
+  # Monitoring: Grafana
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./config/grafana:/etc/grafana/provisioning
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: false
+
+  # File Browser for data management
+  filebrowser:
+    image: filebrowser/filebrowser:latest
+    ports:
+      - "8082:80"
+    volumes:
+      - ./data:/srv
+      - ./config/filebrowser.json:/.filebrowser.json
+    environment:
+      FB_BASEURL: "/files"
+
+volumes:
+  postgres_data:
+  redis_data:
+  spark_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  default:
+    name: enterprise_job_orchestrator
+    driver: bridge

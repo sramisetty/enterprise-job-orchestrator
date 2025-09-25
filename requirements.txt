@@ -1,0 +1,39 @@
+# Enterprise Job Orchestrator Requirements
+# Production dependencies for the upgraded system with Spark and Airflow
+
+# Core dependencies
+asyncpg>=0.27.0
+click>=8.0.0
+psutil>=5.8.0
+typing-extensions>=4.0.0
+
+# Apache Spark integration
+pyspark>=3.4.0
+py4j>=0.10.9.5
+
+# Apache Airflow integration (core only - use extras for full installation)
+apache-airflow>=2.7.0
+apache-airflow-providers-postgres>=5.0.0
+
+# Async and networking
+aiofiles>=23.1.0
+httpx>=0.24.0
+asyncio-throttle>=1.0.2
+
+# Configuration and serialization
+pyyaml>=6.0
+pydantic>=2.0.0
+
+# Monitoring and logging
+structlog>=23.1.0
+prometheus-client>=0.17.0
+
+# Optional dependencies (install with extras)
+# For development: pip install -e .[dev]
+# For monitoring: pip install -e .[monitoring]
+# For web interface: pip install -e .[web]
+# For Redis caching: pip install -e .[redis]
+# For Spark extras: pip install -e .[spark]
+# For Airflow extras: pip install -e .[airflow]
+# For Kubernetes: pip install -e .[kubernetes]
+# For everything: pip install -e .[all]

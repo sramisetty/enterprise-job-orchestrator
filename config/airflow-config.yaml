@@ -1,0 +1,170 @@
+# Apache Airflow Configuration for Enterprise Job Orchestrator
+# This file contains Airflow-specific settings and connection configurations
+
+airflow:
+  # Core Airflow settings
+  core:
+    dags_folder: "./dags"
+    executor: "CeleryExecutor"  # or "LocalExecutor" for development
+    sql_alchemy_conn: "postgresql://airflow:airflow@postgres:5432/airflow"
+    parallelism: 32
+    dag_concurrency: 16
+    max_active_runs_per_dag: 16
+
+  # Webserver configuration
+  webserver:
+    web_server_port: 8080
+    web_server_host: "0.0.0.0"
+    secret_key: "your-secret-key-here"
+    authenticate: true
+    auth_backend: "airflow.api.auth.backend.default"
+
+  # Celery configuration (if using CeleryExecutor)
+  celery:
+    broker_url: "redis://redis:6379/0"
+    result_backend: "db+postgresql://airflow:airflow@postgres:5432/airflow"
+    worker_concurrency: 16
+
+  # Email configuration
+  email:
+    email_backend: "airflow.providers.sendgrid.utils.emailer.send_email"
+    smtp_host: "smtp.gmail.com"
+    smtp_port: 587
+    smtp_user: "your-email@gmail.com"
+    smtp_password: "your-password"
+    smtp_mail_from: "your-email@gmail.com"
+
+  # Logging
+  logging:
+    base_log_folder: "/opt/airflow/logs"
+    remote_logging: false
+    log_level: "INFO"
+
+  # Scheduler configuration
+  scheduler:
+    catchup_by_default: false
+    max_threads: 2
+    dag_dir_list_interval: 300
+    child_process_timeout: 60
+
+# Enterprise Job Orchestrator connections
+connections:
+  # Default connection to the orchestrator
+  enterprise_job_default:
+    conn_type: "enterprise_job_orchestrator"
+    host: "localhost"
+    port: 5432
+    schema: "enterprise_jobs"
+    login: "orchestrator_user"
+    password: "orchestrator_password"
+    extra:
+      engine_config:
+        spark:
+          enabled: true
+          master: "spark://spark-master:7077"
+        local:
+          enabled: true
+          max_workers: 4
+
+  # Production connection
+  enterprise_job_production:
+    conn_type: "enterprise_job_orchestrator"
+    host: "prod-db-host"
+    port: 5432
+    schema: "enterprise_jobs"
+    login: "prod_orchestrator_user"
+    password: "prod_orchestrator_password"
+    extra:
+      engine_config:
+        spark:
+          enabled: true
+          master: "spark://prod-spark-cluster:7077"
+          executor:
+            memory: "8g"
+            cores: 4
+
+# Variables
+variables:
+  # Data paths
+  DATA_ROOT_PATH: "/data"
+  RAW_DATA_PATH: "/data/raw"
+  PROCESSED_DATA_PATH: "/data/processed"
+  ARCHIVE_DATA_PATH: "/data/archive"
+
+  # Processing settings
+  DEFAULT_TIMEOUT_SECONDS: "3600"
+  MAX_RETRY_ATTEMPTS: "3"
+  BATCH_SIZE: "10000"
+
+  # Monitoring
+  SLACK_WEBHOOK_URL: ""
+  EMAIL_ALERTS_ENABLED: "true"
+
+# Pools for resource management
+pools:
+  default_pool:
+    slots: 128
+    description: "Default pool for regular jobs"
+
+  spark_pool:
+    slots: 8
+    description: "Pool for Spark jobs to limit concurrent Spark applications"
+
+  heavy_computation_pool:
+    slots: 4
+    description: "Pool for resource-intensive computations"
+
+  data_ingestion_pool:
+    slots: 6
+    description: "Pool for data ingestion jobs"
+
+# Default DAG arguments
+default_dag_args:
+  owner: "enterprise-job-orchestrator"
+  depends_on_past: false
+  start_date: "2024-01-01"
+  email_on_failure: true
+  email_on_retry: false
+  retries: 1
+  retry_delay_minutes: 5
+  max_active_runs: 1
+  catchup: false
+
+# Security settings
+security:
+  # RBAC settings
+  rbac_enabled: true
+
+  # Authentication
+  auth_type: "database"  # or "oauth", "ldap"
+
+  # Roles and permissions
+  roles:
+    - name: "data_engineer"
+      permissions:
+        - "can_read_dag"
+        - "can_edit_dag"
+        - "can_create_dag_run"
+
+    - name: "data_analyst"
+      permissions:
+        - "can_read_dag"
+        - "can_create_dag_run"
+
+# Integration settings
+integrations:
+  # Slack notifications
+  slack:
+    enabled: false
+    webhook_url: ""
+    channel: "#data-pipeline-alerts"
+
+  # Monitoring
+  prometheus:
+    enabled: false
+    metrics_port: 9090
+
+  # External APIs
+  apis:
+    timeout_seconds: 30
+    retry_attempts: 3
