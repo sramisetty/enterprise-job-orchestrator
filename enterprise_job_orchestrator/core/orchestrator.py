@@ -2,12 +2,13 @@
 Main JobOrchestrator class that coordinates all services
 
 Provides the primary interface for job submission, worker management,
-and system orchestration.
+and system orchestration. Enhanced with Spark and Airflow integration
+while maintaining complete backward compatibility.
 """
 
 import asyncio
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, TYPE_CHECKING
 
 from ..models.job import Job, JobStatus
 from ..models.worker import WorkerNode
@@ -19,6 +20,11 @@ from ..utils.database import DatabaseManager
 from ..utils.logger import get_logger, set_log_context
 from ..core.exceptions import OrchestratorError, JobSubmissionError
 
+# Conditional imports for new features
+if TYPE_CHECKING:
+    from ..services.engine_manager import EngineManager
+    from ..services.fault_tolerance import FaultToleranceService
+
 
 class JobOrchestrator:
     """
@@ -29,26 +35,65 @@ class JobOrchestrator:
     - Worker registration and coordination
     - System monitoring and health checks
     - Performance reporting and metrics
+    - Spark and Airflow integration (when configured)
+    - Advanced fault tolerance and recovery
     """
 
-    def __init__(self, database_manager: DatabaseManager):
+    def __init__(
+        self,
+        database_manager: DatabaseManager,
+        engine_config: Optional[Dict[str, Any]] = None,
+        enable_fault_tolerance: bool = False,
+        enable_legacy_workers: bool = True
+    ):
         """
         Initialize the JobOrchestrator.
 
         Args:
             database_manager: Database connection manager
+            engine_config: Optional configuration for execution engines (Spark, local)
+            enable_fault_tolerance: Enable fault tolerance features
+            enable_legacy_workers: Enable traditional worker management
         """
         self.db = database_manager
 
-        # Initialize service managers
-        self.job_manager = JobManager(database_manager)
+        # Initialize enhanced services if configured
+        self.engine_manager: Optional['EngineManager'] = None
+        self.fault_tolerance: Optional['FaultToleranceService'] = None
+
+        if engine_config:
+            try:
+                from ..services.engine_manager import EngineManager
+                self.engine_manager = EngineManager(engine_config)
+            except ImportError:
+                self.logger.warning("Engine manager dependencies not available")
+
+        if enable_fault_tolerance:
+            try:
+                from ..services.fault_tolerance import FaultToleranceService
+                fault_config = engine_config.get("fault_tolerance", {}) if engine_config else {}
+                self.fault_tolerance = FaultToleranceService(fault_config)
+            except ImportError:
+                self.logger.warning("Fault tolerance dependencies not available")
+
+        # Initialize service managers with enhanced features
+        self.job_manager = JobManager(
+            database_manager,
+            engine_manager=self.engine_manager,
+            fault_tolerance_service=self.fault_tolerance
+        )
         self.queue_manager = QueueManager(database_manager)
-        self.worker_manager = WorkerManager(database_manager)
         self.monitoring_service = MonitoringService(database_manager)
+
+        # Initialize worker manager if enabled
+        self.worker_manager = None
+        if enable_legacy_workers:
+            self.worker_manager = WorkerManager(database_manager)
 
         # State tracking
         self._is_running = False
         self._shutdown_event = asyncio.Event()
+        self.enable_legacy_workers = enable_legacy_workers
 
         # Logger
         self.logger = get_logger(__name__)
@@ -56,15 +101,24 @@ class JobOrchestrator:
 
     async def start(self):
         """Start the orchestrator and all services."""
-        self.logger.info("Starting JobOrchestrator")
+        self.logger.info("Starting JobOrchestrator", extra={
+            "engines_enabled": self.engine_manager is not None,
+            "fault_tolerance_enabled": self.fault_tolerance is not None,
+            "legacy_workers_enabled": self.enable_legacy_workers
+        })
 
         try:
-            # Start all services
+            # Start database
             await self.db.initialize()
+
+            # Start core services
             await self.job_manager.start()
             await self.queue_manager.start()
-            await self.worker_manager.start()
             await self.monitoring_service.start()
+
+            # Start worker manager if enabled
+            if self.enable_legacy_workers and self.worker_manager:
+                await self.worker_manager.start()
 
             self._is_running = True
 
@@ -84,10 +138,13 @@ class JobOrchestrator:
         # Stop all services
         services = [
             self.monitoring_service,
-            self.worker_manager,
             self.queue_manager,
             self.job_manager
         ]
+
+        # Add worker manager if enabled
+        if self.enable_legacy_workers and self.worker_manager:
+            services.append(self.worker_manager)
 
         for service in services:
             try:
@@ -102,6 +159,9 @@ class JobOrchestrator:
     async def submit_job(self, job: Job) -> str:
         """
         Submit a new job for processing.
+
+        Automatically determines whether to use Spark/local engines or traditional queue based on
+        job type and configuration. Maintains complete backward compatibility.
 
         Args:
             job: Job instance to submit
@@ -119,14 +179,16 @@ class JobOrchestrator:
             self.logger.info("Submitting job", extra={
                 "job_id": job.job_id,
                 "job_name": job.job_name,
-                "job_type": job.job_type.value
+                "job_type": job.job_type.value,
+                "engine_manager_available": self.engine_manager is not None
             })
 
-            # Submit to job manager
+            # Submit to enhanced job manager (handles both engine and traditional execution)
             job_id = await self.job_manager.submit_job(job)
 
-            # Add to queue
-            await self.queue_manager.enqueue_job(job)
+            # If engines are not available or job doesn't specify engine, use traditional queue
+            if not self.engine_manager or not getattr(job, 'execution_engine', None):
+                await self.queue_manager.enqueue_job(job)
 
             self.logger.info("Job submitted successfully", extra={"job_id": job_id})
             return job_id
@@ -259,7 +321,7 @@ class JobOrchestrator:
 
     async def get_workers(self, status_filter: Optional[str] = None, pool_filter: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        Get list of workers with optional filtering.
+        Get list of workers including both traditional workers and Spark executors.
 
         Args:
             status_filter: Optional status to filter by
@@ -268,17 +330,49 @@ class JobOrchestrator:
         Returns:
             List of worker dictionaries
         """
+        workers = []
+
         try:
-            workers = await self.worker_manager.get_available_workers()
+            # Get traditional workers if available
+            if self.enable_legacy_workers and self.worker_manager:
+                legacy_workers = await self.worker_manager.get_available_workers()
+                for worker in legacy_workers:
+                    worker_dict = worker.to_dict()
+                    worker_dict["type"] = "legacy"
+                    workers.append(worker_dict)
+
+            # Get Spark executors if available
+            if self.engine_manager:
+                try:
+                    engine_health = await self.engine_manager.get_engine_health()
+                    if "spark" in engine_health and engine_health["spark"].get("status") == "healthy":
+                        spark_info = engine_health["spark"]
+                        resource_usage = spark_info.get("resource_usage", {})
+                        executors = resource_usage.get("executors", 0)
+
+                        for i in range(executors):
+                            workers.append({
+                                "worker_id": f"spark_executor_{i}",
+                                "type": "spark",
+                                "status": "healthy",
+                                "node_name": f"spark-executor-{i}",
+                                "worker_metadata": {
+                                    "engine": "spark",
+                                    "cores": resource_usage.get("total_cores", 0) // max(executors, 1),
+                                    "memory": resource_usage.get("total_memory_mb", 0) // max(executors, 1)
+                                }
+                            })
+                except Exception as e:
+                    self.logger.warning(f"Failed to get Spark executor info: {str(e)}")
 
             # Apply filters
             if status_filter:
-                workers = [w for w in workers if w.status.value == status_filter]
+                workers = [w for w in workers if w.get("status") == status_filter]
 
             if pool_filter:
-                workers = [w for w in workers if w.worker_metadata.get('pool') == pool_filter]
+                workers = [w for w in workers if w.get("worker_metadata", {}).get("pool") == pool_filter]
 
-            return [w.to_dict() for w in workers]
+            return workers
 
         except Exception as e:
             self.logger.error("Error getting workers", exc_info=True)
@@ -287,14 +381,16 @@ class JobOrchestrator:
     # Monitoring Interface
     async def get_system_health(self) -> Dict[str, Any]:
         """
-        Get current system health status.
+        Get comprehensive system health including engines.
 
         Returns:
-            System health dictionary
+            Enhanced system health dictionary
         """
         try:
+            # Get base health from monitoring service
             health = await self.monitoring_service.get_system_health()
-            return {
+
+            health_dict = {
                 "overall_status": health.overall_status,
                 "total_jobs": health.total_jobs,
                 "running_jobs": health.running_jobs,
@@ -310,6 +406,28 @@ class JobOrchestrator:
                 "timestamp": health.timestamp.isoformat()
             }
 
+            # Add engine health if available
+            if self.engine_manager:
+                try:
+                    engine_health = await self.engine_manager.get_engine_health()
+                    health_dict["engines"] = engine_health
+                except Exception as e:
+                    health_dict["engines"] = {"error": str(e)}
+
+            # Add fault tolerance status if available
+            if self.fault_tolerance:
+                try:
+                    dlq = await self.fault_tolerance.get_dead_letter_queue()
+                    circuit_breakers = await self.fault_tolerance.get_circuit_breaker_status()
+                    health_dict["fault_tolerance"] = {
+                        "dead_letter_queue_size": len(dlq),
+                        "circuit_breakers": circuit_breakers
+                    }
+                except Exception as e:
+                    health_dict["fault_tolerance"] = {"error": str(e)}
+
+            return health_dict
+
         except Exception as e:
             self.logger.error("Error getting system health", exc_info=True)
             return {
@@ -319,16 +437,53 @@ class JobOrchestrator:
 
     async def get_performance_report(self, hours: int = 24) -> Dict[str, Any]:
         """
-        Get performance report for specified time period.
+        Get enhanced performance report including engine statistics.
 
         Args:
             hours: Number of hours to include in report
 
         Returns:
-            Performance report dictionary
+            Enhanced performance report dictionary
         """
         try:
-            return await self.monitoring_service.get_performance_report(hours)
+            # Get base report
+            report = await self.monitoring_service.get_performance_report(hours)
+
+            # Add job metrics from enhanced job manager
+            try:
+                job_metrics = await self.job_manager.get_job_metrics(hours)
+                report["job_metrics"] = job_metrics
+            except Exception as e:
+                report["job_metrics"] = {"error": str(e)}
+
+            # Add engine statistics if available
+            if self.engine_manager:
+                try:
+                    engine_stats = await self.engine_manager.get_engine_statistics()
+                    report["engine_statistics"] = engine_stats
+                except Exception as e:
+                    report["engine_statistics"] = {"error": str(e)}
+
+            # Add fault tolerance metrics if available
+            if self.fault_tolerance:
+                try:
+                    dlq = await self.fault_tolerance.get_dead_letter_queue()
+                    report["fault_tolerance_metrics"] = {
+                        "dead_letter_jobs": len(dlq),
+                        "recent_failures": [
+                            {
+                                "job_id": entry["job_id"],
+                                "error": entry["error_message"],
+                                "attempts": entry["attempts"]
+                            }
+                            for entry in dlq[:10]  # Last 10 failures
+                        ]
+                    }
+                except Exception as e:
+                    report["fault_tolerance_metrics"] = {"error": str(e)}
+
+            return report
+
         except Exception as e:
             self.logger.error("Error getting performance report", exc_info=True)
             return {"error": str(e)}
@@ -388,7 +543,7 @@ class JobOrchestrator:
 
     async def health_check(self) -> bool:
         """
-        Perform a basic health check.
+        Perform a comprehensive health check including engines.
 
         Returns:
             True if system is healthy
@@ -402,9 +557,44 @@ class JobOrchestrator:
             if not await self.db.is_healthy():
                 return False
 
+            # Check engine health if available
+            if self.engine_manager:
+                if not await self.engine_manager.health_check():
+                    self.logger.warning("Engine manager health check failed")
+
             # Check if we can get system health
             health = await self.get_system_health()
             return health.get("overall_status") not in ["critical", "unknown"]
 
         except Exception:
             return False
+
+    # Enhanced methods (available when engines/fault tolerance are configured)
+    async def retry_job(self, job_id: str) -> Optional[str]:
+        """Retry a failed job (requires enhanced mode)."""
+        return await self.job_manager.retry_job(job_id)
+
+    async def get_job_metrics(self, hours: int = 24) -> Dict[str, Any]:
+        """Get detailed job execution metrics."""
+        return await self.job_manager.get_job_metrics(hours)
+
+    async def get_dead_letter_queue(self) -> List[Dict[str, Any]]:
+        """Get jobs in dead letter queue (requires fault tolerance)."""
+        return await self.job_manager.get_dead_letter_queue()
+
+    async def reprocess_dead_letter_job(self, job_id: str) -> bool:
+        """Reprocess a job from dead letter queue (requires fault tolerance)."""
+        return await self.job_manager.reprocess_dead_letter_job(job_id)
+
+    async def cleanup_old_jobs(self, days: int = 30) -> int:
+        """Clean up old job records."""
+        return await self.job_manager.cleanup_old_jobs(days)
+
+    def get_engine_status(self) -> Dict[str, Any]:
+        """Get status of execution engines."""
+        return {
+            "engines_available": self.engine_manager is not None,
+            "fault_tolerance_available": self.fault_tolerance is not None,
+            "legacy_workers_enabled": self.enable_legacy_workers,
+            "enhanced_mode": self.job_manager.enhanced_mode
+        }
