@@ -1,0 +1,6 @@
+#venv
+ejo_venv/
+
+# Ignore Python bytecode
+__pycache__/
+*.pyc
